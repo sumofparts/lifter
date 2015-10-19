@@ -1,0 +1,14 @@
+<html>
+  <head>
+    <title>Upload Test</title>
+  </head>
+
+  <body>
+    <form action="http://127.0.0.1:8080/upload" method="post" enctype="multipart/form-data">
+      <input type="hidden" name="upload[token]" value="xyzzy" />
+      <input type="file" name="upload[file1]" />
+      <input type="file" name="upload[file2]" />
+      <button type="submit">Upload!</button>
+    </form>
+  </body>
+</html>
