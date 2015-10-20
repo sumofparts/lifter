@@ -10,7 +10,13 @@ module Lifter
     attr_reader :prologue, :original_request, :original_name, :param
 
     def initialize(file, opts = {})
+      @mutex = Mutex.new
+
       @file = file
+      @path = file.path
+
+      @authorized = false
+      @pending_authorization = false
 
       @hash = setup_hash(opts[:hash_method])
 
@@ -37,23 +43,57 @@ module Lifter
     end
 
     def close
-      @file.close
+      @file.close if !@file.closed?
     end
 
     def rm
       FileUtils.rm(full_path)
+      @path = nil
     end
 
     def mv(new_path)
       FileUtils.mv(full_path, new_path)
+      @path = new_path
     end
 
     def full_path
-      File.expand_path(@file.path)
+      File.expand_path(@path)
     end
 
     def hash
       @hash.hexdigest
+    end
+
+    def authorize
+      @mutex.synchronize do
+        @authorized = true
+      end
+    end
+
+    def pending_authorization
+      @mutex.synchronize do
+        @pending_authorization = true
+      end
+    end
+
+    def pending_authorization?
+      pending = false
+
+      @mutex.synchronize do
+        pending = @pending_authorization == true
+      end
+
+      pending
+    end
+
+    def authorized?
+      authorized = false
+
+      @mutex.synchronize do
+        authorized = @authorized == true
+      end
+
+      authorized
     end
 
     private def setup_hash(hash_type)

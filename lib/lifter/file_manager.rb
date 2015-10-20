@@ -43,10 +43,7 @@ module Lifter
         file.write(data)
 
         if file.prologue.length >= @upload_prologue_size
-          @webhooks.push(file_id) do
-            webhook = create_authorize_webhook(connection, file)
-            webhook.deliver
-          end
+          authorize_file(connection, file_id, file)
         end
       end
     end
@@ -60,21 +57,13 @@ module Lifter
 
         file.mv("#{@working_dir}/completed/#{file_id}")
 
-        @files.remove(file_id)
-
         # In the event the upload was too small for the prologue size to have been met previously,
-        # ensure the authorize webhook is fired off before completed.
+        # ensure the authorize webhook is fired off before the completed webhook.
         if file.prologue.length < @upload_prologue_size
-          @webhooks.push(file_id) do
-            webhook = create_authorize_webhook(connection, file)
-            webhook.deliver
-          end
+          authorize_file(connection, file_id, file)
         end
 
-        @webhooks.push(file_id) do
-          webhook = create_completed_webhook(connection, file)
-          webhook.deliver
-        end
+        complete_file(connection, file_id, file)
       end
     end
 
@@ -101,18 +90,28 @@ module Lifter
       end
     end
 
-    private def create_authorize_webhook(connection, file)
+    private def authorize_file(connection, file_id, file)
+      return if file.authorized? || file.pending_authorization?
+
+      @webhooks.push(file_id) do
+        webhook = create_authorize_webhook(connection, file_id, file)
+        file.pending_authorization
+        webhook.deliver
+      end
+    end
+
+    private def create_authorize_webhook(connection, file_id, file)
       webhook = Webhook.new(@authorize_webhook_endpoint)
 
       headers = file.original_request.headers.dup
       params = file.original_request.params.dup
 
-      headers = clean_request_headers(headers)
+      headers = scrub_request_headers(headers)
       headers['x-upload-ip'] = file.original_request.remote_ip
 
       params[file.param] = {
         file_name: file.original_name,
-        file_prologue: file.prologue.length
+        file_prologue: file.prologue
       }
 
       webhook.headers = headers
@@ -120,18 +119,30 @@ module Lifter
 
       webhook.on_failure do
         connection.cancel
+        cancel_file(connection, file_id)
+      end
+
+      webhook.on_success do
+        file.authorize
       end
 
       webhook
     end
 
-    private def create_completed_webhook(connection, file)
+    private def complete_file(connection, file_id, file)
+      @webhooks.push(file_id) do
+        webhook = create_completed_webhook(connection, file_id, file)
+        webhook.deliver
+      end
+    end
+
+    private def create_completed_webhook(connection, file_id, file)
       webhook = Webhook.new(@completed_webhook_endpoint)
 
       headers = file.original_request.headers.dup
       params = file.original_request.params.dup
 
-      headers = clean_request_headers(headers)
+      headers = scrub_request_headers(headers)
       headers['x-upload-ip'] = file.original_request.remote_ip
 
       params[file.param] = {
@@ -142,12 +153,17 @@ module Lifter
 
       webhook.on_failure do
         connection.cancel
+        @files.remove(file_id)
+      end
+
+      webhook.on_success do
+        @files.remove(file_id)
       end
 
       webhook
     end
 
-    private def clean_request_headers(headers)
+    private def scrub_request_headers(headers)
       SCRUB_HEADERS.each do |header_key|
         headers.delete(header_key)
       end

@@ -15,6 +15,9 @@ module Lifter
 
       @retry_count = 0
       @retry_limit = RETRY_LIMIT
+
+      @on_success = nil
+      @on_failure = nil
     end
 
     def headers=(headers)
@@ -25,13 +28,27 @@ module Lifter
       @params = params
     end
 
+    def on_success(&block)
+      @on_success = block
+    end
+
     def on_failure(&block)
       @on_failure = block
     end
 
     def deliver
       begin
-        response = complete_delivery
+        start_delivery
+      rescue Errors::WebhookFailed => e
+        @on_failure.call if !@on_failure.nil?
+      end
+
+      @on_success.call if !@on_success.nil?
+    end
+
+    private def start_delivery
+      begin
+        response = finish_delivery
       rescue StandardError => e
         raise Errors::WebhookFailed.new
       end
@@ -40,13 +57,13 @@ module Lifter
 
       if RETRY_CODES.include?(response.code) && @retry_count < @retry_limit
         @retry_count += 1
-        deliver
+        start_delivery
       else
         raise Errors::WebhookFailed.new
       end
     end
 
-    private def complete_delivery
+    private def finish_delivery
       http_stub = HTTP.headers(@headers)
 
       case @method.to_sym

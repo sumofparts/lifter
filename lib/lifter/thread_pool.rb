@@ -97,9 +97,6 @@ module Lifter
             rescue StandardError => e
               puts e.to_s
               puts e.backtrace
-              exit
-              add_pending(job_tag)
-              queue.push([job_tag, job])
             end
           end
         end

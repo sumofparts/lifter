@@ -23,6 +23,8 @@ module Lifter
       @server = nil
       @request = Request.new
 
+      @gracefully_close = false
+
       @parser = HTTP::Parser.new
 
       @parser.on_message_begin = proc do
@@ -60,7 +62,24 @@ module Lifter
     end
 
     def unbind
+      @payload.cancel if !gracefully_close? && !@payload.nil?
+    end
+
+    def close(opts = {})
+      @gracefully_close = opts[:gracefully] == true
+
+      EventMachine.next_tick do
+        close_connection(true)
+      end
+    end
+
+    def cancel
       @payload.cancel if !@payload.nil?
+      close(gracefully: true)
+    end
+
+    def gracefully_close?
+      @gracefully_close == true
     end
 
     def http_version
@@ -75,12 +94,6 @@ module Lifter
       EventMachine.next_tick do
         response = "HTTP/#{http_version.join('.')} #{code} #{status}"
         send_data(response)
-      end
-    end
-
-    def close
-      EventMachine.next_tick do
-        close_connection(true)
       end
     end
 

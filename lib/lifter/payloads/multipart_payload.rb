@@ -23,7 +23,7 @@ module Lifter
         return if !current_part?
 
         if current_part.type == :file
-          @file_manager.cancel_file(@current_part.id)
+          @file_manager.cancel_file(@connection, @current_part.id)
         end
 
         @current_part = nil
@@ -69,7 +69,7 @@ module Lifter
 
         @reader.on_end do
           @connection.respond(200, 'OK')
-          @connection.close
+          @connection.close(gracefully: true)
         end
 
         @reader.on_error do |message|
