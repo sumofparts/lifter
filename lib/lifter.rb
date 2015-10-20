@@ -1,6 +1,7 @@
 require 'multipart_parser/parser'
 require 'multipart_parser/reader'
 
+require 'lifter/errors'
 require 'lifter/thread_pool'
 require 'lifter/file_pool'
 require 'lifter/webhook'
