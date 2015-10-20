@@ -1,6 +1,6 @@
-require_relative '../lib/forklift'
+require 'lifter'
 
-server = Forklift::Server.new do |config|
+server = Lifter::Server.new do |config|
   # The host and port to listen on for this Forklift server. Typically, Forklift is backed by nginx
   # or Apache, although it can directly listen to public network interfaces.
   #
@@ -38,7 +38,7 @@ server = Forklift::Server.new do |config|
   # as the first <prologue_limit> bytes of data is received. Non-200 responses for one part will not
   # remove data from other parts, although the connection will still be terminated.
   #
-  authorize_webhook :post, 'http://127.0.0.1:8081'
+  authorize_webhook :post, 'http://127.0.0.1:8081/uploads/authorize'
 
   # A request to this webhook is made once a single file upload completes. In the event the upload
   # is multipart with multiple files, this endpoint will be called once for each file, upon
@@ -46,7 +46,7 @@ server = Forklift::Server.new do |config|
   #
   # An authorize webhook is always sent prior to sending this webhook.
   #
-  completed_webhook :post, 'http://127.0.0.1:8081'
+  completed_webhook :post, 'http://127.0.0.1:8081/uploads/ingest'
 end
 
 server.start
