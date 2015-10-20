@@ -24,7 +24,18 @@ module Lifter
     end
 
     def deliver
-      HTTP.headers(@headers).send(@method.to_sym, params: @params)
+      http_stub = HTTP.headers(@headers)
+
+      case @method.to_sym
+      when :get
+        http_stub.get(@url, params: @params)
+      when :post
+        http_stub.post(@url, form: @params)
+      when :put
+        http_stub.put(@url, form: @params)
+      else
+        raise StandardError.new('unsupported http method in webhook')
+      end
     end
   end
 end
