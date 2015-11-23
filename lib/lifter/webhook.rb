@@ -2,6 +2,29 @@ require 'http'
 
 module Lifter
   class Webhook
+    # Courtesy of: http://dev.mensfeld.pl/2012/01/converting-nested-hash-into-http-url-params-hash-version-in-ruby/
+    module ParamNester
+      def self.encode(value, key = nil, out_hash = {})
+        case value
+        when Hash
+          value.each { |k,v| encode(v, append_key(key, k), out_hash) }
+          out_hash
+        when Array
+          value.each { |v| encode(v, "#{key}[]", out_hash) }
+          out_hash
+        when nil
+          ''
+        else
+          out_hash[key] = value
+          out_hash
+        end
+      end
+
+      def self.append_key(root_key, key)
+        root_key.nil? ? :"#{key}" : :"#{root_key}[#{key.to_s}]"
+      end
+    end
+
     RETRY_CODES = [500, 502, 503, 504]
     RETRY_LIMIT = 3
 
@@ -24,8 +47,8 @@ module Lifter
       @headers = headers
     end
 
-    def params=(params)
-      @params = params
+    def params=(params = {})
+      @params = ParamNester.encode(params)
     end
 
     def on_success(&block)
