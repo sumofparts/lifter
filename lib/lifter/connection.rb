@@ -3,9 +3,10 @@ require 'http/parser'
 
 module Lifter
   class Connection < EventMachine::Connection
-    Request = Struct.new(:headers, :params, :remote_ip)
+    Request = Struct.new(:headers, :params, :remote_ip, :origin)
 
     PAYLOAD_METHODS = ['put', 'post'].freeze
+    OPTIONS_METHOD = 'options'.freeze
     CONTENT_TYPE_KEY = 'content-type'.freeze
     MULTIPART_CONTENT_TYPE = 'multipart/form-data'.freeze
 
@@ -16,6 +17,7 @@ module Lifter
 
       @is_multipart = nil
       @has_payload = nil
+      @options_request = nil
 
       @multipart_reader = nil
       @inline_reader = nil
@@ -33,7 +35,16 @@ module Lifter
 
       @parser.on_headers_complete = proc do
         process_headers
-        start_payload if payload?
+
+        if payload?
+          start_payload
+        else
+          if request_method?(:options)
+            handle_options_request
+          else
+            close(gracefully: true)
+          end
+        end
       end
 
       @parser.on_body = proc do |data|
@@ -90,9 +101,22 @@ module Lifter
       '127.0.0.1'
     end
 
-    def respond(code, status)
+    def respond(code, status, headers = {}, body = '')
+      return if gracefully_close?
+
       EventMachine.next_tick do
         response = "HTTP/#{http_version.join('.')} #{code} #{status}"
+
+        headers = {} if headers.empty?
+        headers[:content_length] = body.bytesize if headers[:content_length].nil?
+        headers[:access_control_allow_origin] = @request.origin if !@request.origin.nil?
+
+        formatted_headers = format_response_headers(headers)
+
+        response << "\r\n" << formatted_headers
+        response << "\r\n\r\n"
+        response << body
+
         send_data(response)
       end
     end
@@ -108,9 +132,6 @@ module Lifter
     end
 
     private def finish_request
-      clear_request
-      clear_multipart
-      clear_payload
     end
 
     private def start_payload
@@ -136,6 +157,8 @@ module Lifter
       @request.headers = headers
 
       @request.remote_ip = remote_ip
+
+      @request.origin = @request.headers['origin']
     end
 
     private def payload?
@@ -144,6 +167,10 @@ module Lifter
       @has_payload = PAYLOAD_METHODS.include?(@parser.http_method.to_s.downcase)
 
       @has_payload
+    end
+
+    private def request_method?(method)
+      @parser.http_method.to_s.downcase == method.to_s.downcase
     end
 
     private def clear_multipart
@@ -178,6 +205,28 @@ module Lifter
 
     private def start_inline_payload
       @payload = Payloads::InlinePayload.new(self, file_manager)
+    end
+
+    private def handle_options_request
+      cors_headers = {
+        access_control_allow_methods: 'PUT, POST',
+        access_control_allow_headers: 'accept, content-type',
+      }
+
+      respond(200, 'OK', cors_headers)
+    end
+
+    private def format_response_headers(headers = {})
+      formatted_headers = []
+
+      headers.each_pair do |key, value|
+        formatted_key = key.to_s.strip.downcase.gsub(/[:_\- ]/, '-').squeeze('-').gsub(/[\s]+/, '')
+        formatted_key = formatted_key.split('-').map { |s| s.capitalize }.join('-')
+
+        formatted_headers << "#{formatted_key}: #{value}"
+      end
+
+      formatted_headers.join("\r\n")
     end
   end
 end
