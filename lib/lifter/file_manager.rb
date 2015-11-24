@@ -151,12 +151,16 @@ module Lifter
         file_hash: file.hash
       }
 
+      webhook.headers = headers
+      webhook.params = params
+
       webhook.on_failure do
         connection.cancel
         @files.remove(file_id)
       end
 
       webhook.on_success do
+        connection.respond(200, 'OK')
         @files.remove(file_id)
       end
 
