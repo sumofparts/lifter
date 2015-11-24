@@ -10,6 +10,12 @@ module Lifter
     end
 
     def start
+      # Ensure progress and completed work directories are established.
+      progress_dir = "#{@config.get(:working_dir)}/progress"
+      completed_dir = "#{@config.get(:working_dir)}/completed"
+      FileUtils.mkdir(progress_dir) if !File.directory?(progress_dir)
+      FileUtils.mkdir(completed_dir) if !File.directory?(completed_dir)
+
       EventMachine.epoll if EventMachine.epoll?
       EventMachine.kqueue if EventMachine.kqueue?
 
